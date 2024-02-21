@@ -2,6 +2,7 @@ import { APP_VERSION, Device, OS_VERSION } from './models'
 import forge from 'node-forge'
 import { SHA3 } from 'sha3'
 import { generateRandomString } from '../../common/utils'
+import { FetchResponse } from '../../common/network'
 
 export function getDeviceInfo (device: Device): string {
   return forge.util.encode64(JSON.stringify({
@@ -13,6 +14,12 @@ export function getDeviceInfo (device: Device): string {
     remembered: true,
     rooted: false
   }))
+}
+
+export function getCookies (response: FetchResponse): string[] {
+  const headers = response.headers as Record<string, unknown>
+  const cookies = headers['set-cookie'] as string
+  return cookies.split(';,')
 }
 
 export function hashPasswordRequest ({ loginSalt, loginHashMethod, requestSalt }: { loginSalt: string, loginHashMethod: string, requestSalt: string }, password: string): string {

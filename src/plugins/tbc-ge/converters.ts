@@ -1,5 +1,15 @@
-import { AccountType, Amount, ExtendedTransaction, Merchant, Transaction } from '../../types/zenmoney'
-import { ConvertedAccount, ConvertedCard, ConvertedCreditCard, ConvertedDeposit, ConvertedLoan, ConvertedProduct, FetchedAccount, FetchedAccounts } from './models'
+import { Account, AccountOrCard, AccountType, Amount, ExtendedTransaction, Merchant, Transaction } from '../../types/zenmoney'
+import {
+  ConvertedAccount,
+  ConvertedCard,
+  ConvertedCreditCard,
+  ConvertedDeposit,
+  ConvertedLoan,
+  ConvertedProduct,
+  FetchedAccount,
+  FetchedAccounts,
+  FetchedAccountsV2, CardProductV2, PreparedCardV2, CardsAndAccounts, PreparedAccountV2
+} from './models'
 import { getArray, getBoolean, getNumber, getOptArray, getOptNumber, getOptString, getString } from '../../types/get'
 import { padStart, pullAll, uniqBy } from 'lodash'
 import { getIntervalBetweenDates } from '../../common/momentDateUtils'
@@ -25,6 +35,50 @@ function findCreditCardWithBlockations (creditCard: unknown, creditCardsWithBloc
 function findCreditCards (creditCard: unknown, creditCards: unknown[]): unknown | undefined {
   const iban = getString(creditCard, 'iban')
   return creditCards.find(x => getString(x, 'iban') === iban)
+}
+
+export function convertAccountsV2 (cardsAndAccounts: CardsAndAccounts): PreparedAccountV2[] {
+  const accounts: PreparedAccountV2[] = []
+  for (const apiAccount of cardsAndAccounts.accountsAndDebitCards) {
+    if (apiAccount.type === 'Card') {
+      continue
+    }
+    const account: PreparedAccountV2 = {
+      account: {
+        id: (apiAccount.id != null) ? apiAccount.id.toString() : apiAccount.iban,
+        type: AccountType.checking,
+        title: apiAccount.name,
+        instrument: apiAccount.currency,
+        syncIds: [apiAccount.iban],
+        balance: apiAccount.amount
+      }
+    }
+    accounts.push(account)
+  }
+  return accounts
+}
+
+export function convertCardsV2 (apiAccounts: CardProductV2[]): PreparedCardV2[] {
+  const accounts: PreparedCardV2[] = []
+  for (const apiAccount of apiAccounts) {
+    const mainCard = apiAccount.cards[0]
+    for (const account of apiAccount.accounts) {
+      const card: PreparedCardV2 = {
+        account: {
+          id: account.id.toString(),
+          type: AccountType.ccard,
+          title: `${apiAccount.typeText} ${account.currency}`,
+          instrument: account.currency,
+          syncIds: [apiAccount.iban, mainCard.numberSuffix],
+          balance: account.balance
+        },
+        code: mainCard.numberSuffix
+      }
+      console.log('PreparedCardV2', card)
+      accounts.push(card)
+    }
+  }
+  return accounts
 }
 
 export function convertAccounts (apiAccounts: FetchedAccounts): ConvertedProduct[] {

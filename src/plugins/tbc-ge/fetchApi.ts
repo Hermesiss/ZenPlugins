@@ -3,8 +3,24 @@ import { defaultsDeep, isArray } from 'lodash'
 import qs from 'querystring'
 import get, { getArray, getBoolean, getNumber, getOptArray, getOptNumber, getOptString, getString } from '../../types/get'
 import { InvalidLoginOrPasswordError, InvalidOtpCodeError, TemporaryUnavailableError } from '../../errors'
-import { APP_VERSION, Auth, Device, OS_VERSION, OtpDevice, Session } from './models'
-import { encryptFirstPasscode, getDeviceInfo, hashPasscodeRequest, hashPasswordRequest } from './utils'
+import {
+  APP_VERSION,
+  Auth,
+  AuthV2,
+  CardsAndAccounts,
+  CertifyLoginResponseV2,
+  Device,
+  DeviceData,
+  DeviceInfo,
+  EasyLoginRequestV2,
+  LoginResponse,
+  OS_VERSION,
+  OtpDevice,
+  PasswordLoginRequestV2, CardProductV2,
+  Session,
+  SessionV2
+} from './models'
+import { encryptFirstPasscode, getCookies, getDeviceInfo, hashPasscodeRequest, hashPasswordRequest } from './utils'
 import forge from 'node-forge'
 import { encryptJWEUsingJSONKey, encryptJWEUsingObjectKey } from './jweUtils'
 import { retry } from '../../common/retry'
@@ -42,7 +58,8 @@ async function fetchLoginApi (url: string, body: unknown, sanitizeOptions: { san
 }
 
 async function fetchLoginService (body: unknown, sanitizeOptions: { sanitizeRequestLog?: unknown, sanitizeResponseLog?: unknown }): Promise<unknown> {
-  return await fetchLoginApi('https://tbconline.ge/mbs-json/remoting/LoginService', body, sanitizeOptions)
+  return await fetchLoginApi('https://account.tbconline.ge/Login', body, sanitizeOptions)
+  // return await fetchLoginApi('https://tbconline.ge/mbs-json/remoting/LoginService', body, sanitizeOptions)
 }
 
 async function fetchAuthorizedApi (url: string, options: FetchOptions, session: { auth: { device: Device }, ibsAccessToken: string }): Promise<unknown> {
@@ -113,6 +130,42 @@ export async function fetchGetRequestSalt (): Promise<string> {
   return getString(response, 'salt')
 }
 
+export async function fetchLoginByPasswordV2 ({ username, password, deviceInfo, deviceData }:
+{ username: string, password: string, deviceInfo: DeviceInfo, deviceData: DeviceData }): Promise<LoginResponse> {
+  const base64encodedDeviceInfo = deviceInfo.toBase64()
+  const base64encodedDeviceData = deviceData.toBase64()
+  const url = 'https://rmbgwauth.tbconline.ge/v1/auth/loginWithPassword'
+  const body: PasswordLoginRequestV2 = {
+    username,
+    password,
+    language: 'en',
+    deviceInfo: base64encodedDeviceInfo,
+    deviceData: base64encodedDeviceData,
+    deviceId: deviceInfo.deviceId
+  }
+  const response = await fetchApi(url,
+    {
+      body,
+      headers: {
+        'User-Agent': `TBC a${APP_VERSION} (Android; Android ${OS_VERSION}; ANDROID_PHONE)`,
+        'Content-Type': 'application/json; charset=UTF-8'
+      },
+      stringify: JSON.stringify,
+      parse: JSON.parse,
+      method: 'POST',
+      sanitizeRequestLog: { body: { username: true, password: true } },
+      sanitizeResponseLog: { body: { transactionId: true } }
+    })
+
+  if (response.status === 401) {
+    throw new InvalidLoginOrPasswordError()
+  }
+
+  const loginResp = response.body as LoginResponse
+  loginResp.cookies = getCookies(response)
+  return loginResp
+}
+
 export async function fetchLoginByPassword ({ login, password }: { login: string, password: string },
   saltInfo: { loginSalt: string, loginHashMethod: string, requestSalt: string },
   device: Device):
@@ -157,6 +210,34 @@ export async function fetchLoginByPassword ({ login, password }: { login: string
   }
 }
 
+export async function fetchLoginByPasscodeV2 (auth: AuthV2, deviceInfo: DeviceInfo, deviceData: DeviceData): Promise<LoginResponse> {
+  const body: EasyLoginRequestV2 = {
+    userName: auth.username,
+    passcode: auth.passcode,
+    registrationId: auth.registrationId,
+    deviceInfo: deviceInfo.toBase64(),
+    deviceData: deviceData.toBase64(),
+    passcodeType: 'NUMERIC_PASSCODE',
+    language: 'en',
+    deviceId: deviceInfo.deviceId,
+    trustedDeviceId: auth.trustedDeviceId
+  }
+  const response = await fetchApi('https://rmbgwauth.tbconline.ge/v1/auth/easyLogin', {
+    body,
+    headers: {
+      'User-Agent': `TBC a${APP_VERSION} (Android; Android ${OS_VERSION}; ANDROID_PHONE)`,
+      'Content-Type': 'application/json; charset=UTF-8'
+    },
+    method: 'POST',
+    stringify: JSON.stringify,
+    parse: JSON.parse,
+    sanitizeRequestLog: { body: { userName: true, passcode: true, registrationId: true } }
+  })
+  const loginResponse = response.body as LoginResponse
+  loginResponse.cookies = getCookies(response)
+  return loginResponse
+}
+
 export async function fetchLoginByPasscode (requestSalt: string,
   auth: Auth): Promise<{ accessToken: string, authPublicKey: string, loginId: string, transactionId: number }> {
   const response = await fetchLoginService({
@@ -192,6 +273,55 @@ export async function fetchLoginByPasscode (requestSalt: string,
     loginId: getString(signature, 'id'),
     transactionId
   }
+}
+
+export async function fetchCertifyLoginBySmsV2 (code: string, transactionId: string): Promise<string[]> {
+  const body = {
+    transactionId,
+    language: 'en',
+    signature: {
+      response: code,
+      status: 'CHALLENGE',
+      type: 'SMS_OTP',
+      otpId: 'NONE'
+    }
+  }
+  const url = 'https://rmbgwauth.tbconline.ge/v1/auth/certifyLogin'
+  const response = await fetchApi(url, {
+    body,
+    headers: {
+      'User-Agent': `TBC a${APP_VERSION} (Android; Android ${OS_VERSION}; ANDROID_PHONE)`,
+      'Content-Type': 'application/json; charset=UTF-8'
+    },
+    method: 'POST',
+    stringify: JSON.stringify,
+    parse: JSON.parse,
+    sanitizeRequestLog: { body: { signature: { response: true } } }
+  })
+  const data = response.body as CertifyLoginResponseV2
+  if (!data?.success) {
+    throw new InvalidOtpCodeError()
+  }
+  return getCookies(response)
+}
+
+/**
+ * Fetches user info
+ * @param cookies
+ * @returns sessionId
+ */
+export async function fetchGetSessionIdV2 (cookies: string[]): Promise<string> {
+  const user = await fetchApi('https://rmbgwauth.tbconline.ge/v2/usermanagement/userinfo', {
+    headers: {
+      'User-Agent': `TBC a${APP_VERSION} (Android; Android ${OS_VERSION}; ANDROID_PHONE)`,
+      Cookie: cookies.join('; ')
+    },
+    method: 'GET',
+    parse: JSON.parse
+  })
+  const clientNameEn = getString(user.body, 'clientNameEn')
+  console.log('clientNameEn', clientNameEn)
+  return getString(user.body, 'sessionId')
 }
 
 export async function fetchCertifyLoginBySms (smsCode: string,
@@ -286,6 +416,36 @@ export async function fetchInitHeaders (session: { auth: { device: Device }, ibs
   }, session)
 }
 
+/**
+ * Fetches registrationId
+ * @param auth
+ * @return registrationId
+ */
+export async function fetchRegisterDeviceV2 (auth: { deviceName: string, passcode: string, deviceId: string }): Promise<string> {
+  const body = {
+    ...auth,
+    passcodeType: 'NUMERIC_PASSCODE'
+  }
+
+  const response = await fetchApi('https://rmbgwauth.tbconline.ge/v1/auth/registerDevice', {
+    body,
+    headers: {
+      'User-Agent': `TBC a${APP_VERSION} (Android; Android ${OS_VERSION}; ANDROID_PHONE)`,
+      'Content-Type': 'application/json; charset=UTF-8'
+    },
+    method: 'POST',
+    stringify: JSON.stringify,
+    parse: JSON.parse,
+    sanitizeRequestLog: { body: { passcode: true } },
+    sanitizeResponseLog: { body: { registrationId: true } }
+  })
+  const success = getBoolean(response.body, 'success')
+  if (!success) {
+    throw new InvalidOtpCodeError()
+  }
+  return getString(response.body, 'registrationId')
+}
+
 export async function fetchRegisterDevice (auth: { device: Device, passcode: string }): Promise<string> {
   const response = await fetchLoginApi('https://tbconline.ge/mbs-json/remoting/DeviceManagementService', {
     arguments: [
@@ -320,6 +480,44 @@ interface TrustedDeviceInfo {
   certRequired: boolean
 }
 
+/**
+ * Attempts to trust the device
+ * @param deviceData
+ * @param sessionId
+ * @param cookies
+ * @return orderId
+ */
+export async function fetchTrustDeviceV2 (deviceData: DeviceData, sessionId: string, cookies: string[]): Promise<number> {
+  const body = {
+    deviceId: deviceData.deviceId,
+    sessionId,
+    orderType: 'Set'
+  }
+  console.log('Cookies: ', cookies.join('; '))
+  const response = await fetchApi('https://rmbgwauth.tbconline.ge/devicemanagement/api/v1/device/order', {
+    body,
+    headers: {
+      'User-Agent': `TBC a${APP_VERSION} (Android; Android ${OS_VERSION}; ANDROID_PHONE)`,
+      'Content-Type': 'application/json; charset=UTF-8',
+      'Accept-Language': 'en-us',
+      // 'User-Agent': 'okhttp/4.9.1',
+      'APP-VERSION': APP_VERSION,
+      'DEVICE-ID': deviceData.deviceId,
+      'DEVICE-MANUFACTURER': deviceData.manufacturer,
+      'DEVICE-MODEL': deviceData.modelNumber,
+      'DEVICE-OS': 'Android 7.1.1',
+      'DEVICE-ROOTED': 'false',
+      'DEVICE-TYPE': 'ANDROID_PHONE',
+      Cookie: cookies.join('; ')
+    },
+    method: 'POST',
+    stringify: JSON.stringify,
+    parse: JSON.parse,
+    sanitizeRequestLog: { body: { sessionId: true } }
+  })
+  return getNumber(response.body, 'orderId')
+}
+
 export async function fetchInitTrustedDevice (session: { auth: { device: Device }, ibsAccessToken: string }): Promise<TrustedDeviceInfo> {
   const response = await fetchAuthorizedApi('https://tbconline.ge/ibs/delegate/rest/transaction/v1/transaction', {
     method: 'POST',
@@ -347,6 +545,33 @@ export async function fetchInitTrustedDevice (session: { auth: { device: Device 
     businessObjectType: getString(response, 'businessObjectType'),
     certRequired: getBoolean(response, 'certRequired')
   }
+}
+
+/**
+ * Confirms the trusted device
+ * @param authorizationCode
+ * @param orderId
+ * @param cookies
+ * @return trustId
+ */
+export async function fetchConfirmTrustedDeviceV2 (authorizationCode: string, orderId: number, cookies: string[]): Promise<string> {
+  const body = {
+    orderId, authorizationCode, orderType: 'Set'
+  }
+
+  const response = await fetchApi('https://rmbgwauth.tbconline.ge/devicemanagement/api/v1/device/order/confirm', {
+    body,
+    headers: {
+      'User-Agent': `TBC a${APP_VERSION} (Android; Android ${OS_VERSION}; ANDROID_PHONE)`,
+      'Content-Type': 'application/json; charset=UTF-8'
+    },
+    method: 'POST',
+    stringify: JSON.stringify,
+    parse: JSON.parse,
+    sanitizeRequestLog: { body: { authorizationCode: true } },
+    sanitizeResponseLog: { body: { trustId: true } }
+  })
+  return getString(response.body, 'trustId')
 }
 
 export async function fetchConfirmTrustedDevice (smsCode: string,
@@ -470,7 +695,11 @@ export async function fetchDepositStatements (id: number, session: Session): Pro
   return response
 }
 
-export async function fetchDashboard (session: Session): Promise<{ creditCards: unknown[], creditCardsWithBlockations: unknown[], debitCardsWithBlockations: unknown[] }> {
+export async function fetchDashboard (session: Session): Promise<{
+  creditCards: unknown[]
+  creditCardsWithBlockations: unknown[]
+  debitCardsWithBlockations: unknown[]
+}> {
   const toDate = new Date()
   const fromDate = new Date(toDate.getTime())
   fromDate.setDate(fromDate.getDate() - 1)
@@ -494,6 +723,33 @@ export async function fetchDashboard (session: Session): Promise<{ creditCards: 
   }
 }
 
+export async function fetchCardsListV2 (session: SessionV2): Promise<CardProductV2[]> {
+  const response = await fetchApi('https://rmbgw.tbconline.ge/products/api/v1/cards', {
+    method: 'GET',
+    headers: {
+      'User-Agent': `TBC a${APP_VERSION} (Android; Android ${OS_VERSION}; ANDROID_PHONE)`,
+      Cookie: session.cookies.join('; '),
+      'Content-Type': 'application/json; charset=UTF-8',
+      'Accept-Language': 'en-us'
+    },
+    parse: JSON.parse
+  })
+  return response.body as CardProductV2[]
+}
+
+export async function fetchCardAndAccountsDashboardV2 (session: SessionV2): Promise<CardsAndAccounts> {
+  const response = await fetchApi('https://rmbgw.tbconline.ge/dashboard/api/v1/cards-and-accounts', {
+    method: 'GET',
+    headers: {
+      'User-Agent': `TBC a${APP_VERSION} (Android; Android ${OS_VERSION}; ANDROID_PHONE)`,
+      Cookie: session.cookies.join('; '),
+      'Content-Type': 'application/json; charset=UTF-8',
+      'Accept-Language': 'en-us'
+    },
+    parse: JSON.parse
+  })
+  return response.body as CardsAndAccounts
+}
 export async function fetchAccountsList (session: Session): Promise<unknown[]> {
   const response = await fetchAuthorizedApi('https://tbconline.ge/ibs/delegate/rest/account/v2/accounts', {
     method: 'POST',
