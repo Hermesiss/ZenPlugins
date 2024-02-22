@@ -339,7 +339,7 @@ WxdnLbK6zKx6+4WL9qWhGu6R+7HNPAaKOb7KXEwjV2ekr6FVZneKRFe/XivMk66O
   return session
 }
 
-export async function fetchTransactionsV2 (session: SessionV2, fromDate: Date, data: FetchHistoryV2Data[]): Promise<TransactionsByDateV2[]> {
+export async function fetchTransactionsV2 (session: SessionV2, fromDate: Date, data: FetchHistoryV2Data): Promise<TransactionsByDateV2[]> {
   return await fetchHistoryV2(session, fromDate, data)
 }
 

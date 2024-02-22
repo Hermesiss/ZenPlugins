@@ -763,15 +763,22 @@ export async function fetchAccountsList (session: Session): Promise<unknown[]> {
   return response
 }
 
-export async function fetchHistoryV2 (session: SessionV2, fromDate: Date, data: FetchHistoryV2Data[]): Promise<TransactionsByDateV2[]> {
+export async function fetchHistoryV2 (session: SessionV2, fromDate: Date, data: FetchHistoryV2Data): Promise<TransactionsByDateV2[]> {
   const result: TransactionsByDateV2[] = []
   let lastSortColKey: number | null = null
   const pageSize = 100
-  const accounts = data.map(x => { return { ...x, type: '200' } })
+  const coreAccountIds = [
+    {
+      currency: data.currency,
+      iban: data.iban,
+      id: data.id,
+      type: '200'
+    }
+  ]
   let lastDate = new Date().getTime()
   while (true) {
     const b = {
-      coreAccountIds: accounts,
+      coreAccountIds,
       pageSize,
       pageType: 'History',
       isChildCardRequest: false,

@@ -410,10 +410,13 @@ function parseOuterTransfer (transaction: Transaction, apiTransaction: unknown, 
   return false
 }
 
-export function convertTransactionsV2 (transactionRecordsByDate: TransactionsByDateV2[], fetchHistoryV2Data: FetchHistoryV2Data): ExtendedTransaction[] {
+export function convertTransactionsV2 (transactionRecordsByDate: TransactionsByDateV2[], data: FetchHistoryV2Data): ExtendedTransaction[] {
   const transactions: ExtendedTransaction[] = []
   for (const transactionRecords of transactionRecordsByDate) {
     for (const transactionRecord of transactionRecords.transactions) {
+      if (transactionRecord.currency !== data.currency) {
+        continue
+      }
       let amount: number
       let merchant: Merchant | null = null
       let secondMovement: Movement | null = null
@@ -456,7 +459,7 @@ export function convertTransactionsV2 (transactionRecordsByDate: TransactionsByD
 
       const firstMovement: Movement = {
         id: null,
-        account: { id: fetchHistoryV2Data.account.id },
+        account: { id: data.account.id },
         invoice: null,
         sum: amount,
         fee: 0
