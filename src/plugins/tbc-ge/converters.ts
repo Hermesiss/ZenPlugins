@@ -426,13 +426,14 @@ export function convertTransactionsV2 (transactionRecordsByDate: TransactionsByD
         amount = blockedTransaction.amount
         if (blockedTransaction.isCash()) {
           secondMovement = createCashMovement(blockedTransaction.transaction.currency, -amount)
-        }
-        merchant = {
-          city: blockedTransaction.city,
-          country: blockedTransaction.countryCode,
-          title: blockedTransaction.merchant,
-          mcc: null,
-          location: null
+        } else {
+          merchant = {
+            city: blockedTransaction.city,
+            country: blockedTransaction.countryCode,
+            title: blockedTransaction.merchant,
+            mcc: null,
+            location: null
+          }
         }
       } else {
         amount = transactionRecord.amount
@@ -444,13 +445,14 @@ export function convertTransactionsV2 (transactionRecordsByDate: TransactionsByD
           const movement = new TransactionStandardMovementV2(transactionRecord)
           if (movement.isCash()) {
             secondMovement = createCashMovement(movement.transaction.currency, -amount)
-          }
-          merchant = {
-            city: null,
-            country: null,
-            title: movement.merchant,
-            mcc: Number.isNaN(movement.mcc) ? null : movement.mcc,
-            location: null
+          } else {
+            merchant = {
+              city: null,
+              country: null,
+              title: movement.merchant,
+              mcc: Number.isNaN(movement.mcc) ? null : movement.mcc,
+              location: null
+            }
           }
         }
       }
