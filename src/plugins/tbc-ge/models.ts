@@ -1,4 +1,4 @@
-import { Account, AccountOrCard, AccountType, Movement, Transaction } from '../../types/zenmoney'
+import { Account, AccountOrCard, AccountType, Amount, Movement, Transaction } from '../../types/zenmoney'
 
 export type OtpDevice = 'SMS_OTP' | 'TOKEN_GEMALTO' | 'TOKEN_VASCO'
 
@@ -184,9 +184,20 @@ export class TransactionStandardMovementV2 {
   date: Date
   cardNum: string
   mcc: number
+  invoice: Amount | null
 
   isCash (): boolean {
     return this.transaction.categoryCode === 'CASHOUT' // TODO add cash in
+  }
+
+  needInvoice (): boolean {
+    if (this.invoice === null) {
+      return false
+    }
+    if (this.invoice.instrument !== this.transaction.currency) {
+      return true
+    }
+    return Math.abs(this.invoice.sum) !== Math.abs(this.amount)
   }
 
   constructor (transaction: TransactionRecordV2) {
@@ -200,6 +211,22 @@ export class TransactionStandardMovementV2 {
     const arr = transaction.title.split(',')
     this.merchant = arr[0].split('-')[1].trim()
     this.amount = transaction.amount
+    const invoiceStr = arr[1].split(' ')
+    const invoice = {
+      sum: Number.parseFloat(invoiceStr[invoiceStr.length - 2]),
+      instrument: invoiceStr[invoiceStr.length - 1]
+    }
+
+    const sign = Math.sign(this.amount)
+    if (sign === -1) {
+      invoice.sum = -invoice.sum
+    }
+
+    if (!Number.isNaN(invoice.sum)) {
+      this.invoice = invoice
+    } else {
+      this.invoice = null
+    }
     this.date = new Date(arr[2])
     this.cardNum = arr[arr.length - 1].trim().slice(-4)
     this.mcc = Number.parseInt(arr[arr.length - 3].replace('MCC:', '').trim())

@@ -421,9 +421,11 @@ export function convertTransactionsV2 (transactionRecordsByDate: TransactionsByD
       let merchant: Merchant | null = null
       let secondMovement: Movement | null = null
       let comment: string | null = null
+      let invoice: Amount | null = null
       if (transactionRecord.entryType === 'BlockedTransaction') {
         const blockedTransaction = new TransactionBlockedV2(transactionRecord)
         amount = blockedTransaction.amount
+        // TODO add invoice
         if (blockedTransaction.isCash()) {
           secondMovement = createCashMovement(blockedTransaction.transaction.currency, -amount)
         } else {
@@ -443,6 +445,9 @@ export function convertTransactionsV2 (transactionRecordsByDate: TransactionsByD
           merchant = null
         } else {
           const movement = new TransactionStandardMovementV2(transactionRecord)
+          if (movement.needInvoice()) {
+            invoice = movement.invoice!
+          }
           if (movement.isCash()) {
             secondMovement = createCashMovement(movement.transaction.currency, -amount)
           } else {
@@ -462,7 +467,7 @@ export function convertTransactionsV2 (transactionRecordsByDate: TransactionsByD
       const firstMovement: Movement = {
         id: null,
         account: { id: data.account.id },
-        invoice: null,
+        invoice,
         sum: amount,
         fee: 0
       }

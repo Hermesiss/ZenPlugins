@@ -14,7 +14,7 @@ import {
   Preferences,
   CardProductV2,
   Session,
-  SessionV2, FetchedAccountsV2, CardsAndAccounts, TransactionV2, TransactionRecordV2, TransactionsByDateV2, FetchHistoryV2Data
+  SessionV2, CardsAndAccounts, TransactionsByDateV2, FetchHistoryV2Data
 } from './models'
 import {
   fetchAccountsList, fetchCardAndAccountsDashboardV2,
