@@ -1,4 +1,4 @@
-import { Account, AccountOrCard, AccountType, Amount, ExtendedTransaction, Merchant, Transaction } from '../../types/zenmoney'
+import { AccountType, Amount, ExtendedTransaction, Merchant, Movement, Transaction } from '../../types/zenmoney'
 import {
   ConvertedAccount,
   ConvertedCard,
@@ -8,7 +8,12 @@ import {
   ConvertedProduct,
   FetchedAccount,
   FetchedAccounts,
-  FetchedAccountsV2, CardProductV2, PreparedCardV2, CardsAndAccounts, PreparedAccountV2
+  CardProductV2,
+  PreparedCardV2,
+  CardsAndAccounts,
+  PreparedAccountV2,
+  TransactionsByDateV2,
+  TransactionBlockedV2, TransactionTransferV2, TransactionStandardMovementV2, FetchHistoryV2Data, createCashMovement
 } from './models'
 import { getArray, getBoolean, getNumber, getOptArray, getOptNumber, getOptString, getString } from '../../types/get'
 import { padStart, pullAll, uniqBy } from 'lodash'
@@ -51,7 +56,8 @@ export function convertAccountsV2 (cardsAndAccounts: CardsAndAccounts): Prepared
         instrument: apiAccount.currency,
         syncIds: [apiAccount.iban],
         balance: apiAccount.amount
-      }
+      },
+      iban: apiAccount.iban
     }
     accounts.push(account)
   }
@@ -72,9 +78,10 @@ export function convertCardsV2 (apiAccounts: CardProductV2[]): PreparedCardV2[] 
           syncIds: [apiAccount.iban, mainCard.numberSuffix],
           balance: account.balance
         },
-        code: mainCard.numberSuffix
+        code: mainCard.numberSuffix,
+        id: account.id,
+        iban: apiAccount.iban
       }
-      console.log('PreparedCardV2', card)
       accounts.push(card)
     }
   }
@@ -401,6 +408,82 @@ function parseOuterTransfer (transaction: Transaction, apiTransaction: unknown, 
     return true
   }
   return false
+}
+
+export function convertTransactionsV2 (transactionRecordsByDate: TransactionsByDateV2[], fetchHistoryV2Data: FetchHistoryV2Data): ExtendedTransaction[] {
+  const transactions: ExtendedTransaction[] = []
+  for (const transactionRecords of transactionRecordsByDate) {
+    for (const transactionRecord of transactionRecords.transactions) {
+      let amount: number
+      let merchant: Merchant | null = null
+      let secondMovement: Movement | null = null
+      let comment: string | null = null
+      if (transactionRecord.entryType === 'BlockedTransaction') {
+        const blockedTransaction = new TransactionBlockedV2(transactionRecord)
+        amount = blockedTransaction.amount
+        if (blockedTransaction.isCash()) {
+          secondMovement = createCashMovement(blockedTransaction.transaction.currency, -amount)
+        }
+        merchant = {
+          city: blockedTransaction.city,
+          country: blockedTransaction.countryCode,
+          title: blockedTransaction.merchant,
+          mcc: null,
+          location: null
+        }
+      } else {
+        amount = transactionRecord.amount
+        if (TransactionTransferV2.isTransfer(transactionRecord)) {
+          const transfer = new TransactionTransferV2(transactionRecord)
+          comment = transfer.transaction.title
+          merchant = null
+        } else {
+          const movement = new TransactionStandardMovementV2(transactionRecord)
+          if (movement.isCash()) {
+            secondMovement = createCashMovement(movement.transaction.currency, -amount)
+          }
+          merchant = {
+            city: null,
+            country: null,
+            title: movement.merchant,
+            mcc: Number.isNaN(movement.mcc) ? null : movement.mcc,
+            location: null
+          }
+        }
+      }
+
+      let movements: [Movement] | [Movement, Movement]
+
+      const firstMovement: Movement = {
+        id: null,
+        account: { id: fetchHistoryV2Data.account.id },
+        invoice: null,
+        sum: amount,
+        fee: 0
+      }
+      if (secondMovement != null) {
+        movements = [
+          firstMovement,
+          secondMovement
+        ]
+      } else {
+        movements = [
+          firstMovement
+        ]
+      }
+
+      const transaction: ExtendedTransaction = {
+        hold: transactionRecord.dispute ?? false,
+        date: new Date(transactionRecords.date),
+        movements,
+        merchant,
+        comment,
+        groupKeys: []
+      }
+      transactions.push(transaction)
+    }
+  }
+  return transactions
 }
 
 export function convertTransaction (apiTransaction: unknown, product: ConvertedProduct): ExtendedTransaction | null {

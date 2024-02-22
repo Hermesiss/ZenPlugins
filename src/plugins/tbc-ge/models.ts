@@ -1,4 +1,4 @@
-import { Account, Transaction } from '../../types/zenmoney'
+import { Account, AccountOrCard, AccountType, Movement, Transaction } from '../../types/zenmoney'
 
 export type OtpDevice = 'SMS_OTP' | 'TOKEN_GEMALTO' | 'TOKEN_VASCO'
 
@@ -64,13 +64,146 @@ export interface AccountV2 {
   overdraftAmount: null
 }
 
-export interface PreparedCardV2 {
+export interface FetchHistoryV2Data {
   account: Account
+  currency: string
+  iban: string
+  id: string
+}
+
+export interface TransactionRecordV2 {
+  transactionId: number
+  accountId: number
+  entryType: 'StandardMovement' | 'BlockedTransaction'
+  movementId: string
+  transactionDate: null | string
+  localTime: null | string
+  repeatTransaction: null | boolean
+  setAutomaticTransfer: null | boolean
+  payback: null | boolean
+  saveAsTemplate: null | boolean
+  shareReceipt: null | boolean
+  dispute: null | boolean
+  title: string
+  subTitle: string
+  amount: number
+  currency: string
+  categoryCode: string
+  subCategoryCode: string
+  isSplit: null | boolean
+  transactionSubtype: number
+  blockedMovementDate: null | string
+  blockedMovementCardId: null | number
+  blockedMovementIban: null | string
+  transactionStatus: string
+  isDebit: boolean
+}
+
+export interface TransactionsByDateV2 {
+  date: number
+  transactions: TransactionRecordV2[]
+}
+
+export interface PreparedCardV2 {
+  account: AccountOrCard
   code: string // TODO GET from https://rmbgw.tbconline.ge/wallet/api/v1/cards
+  id: number
+  iban: string
 }
 
 export interface PreparedAccountV2 {
-  account: Account
+  account: AccountOrCard
+  iban: string
+}
+
+export interface CoreAccountId {
+  currency: string
+  iban: string
+  id: string
+  type: number
+}
+
+export interface TransactionV2 {
+  coreAccountIds: CoreAccountId[]
+  isChildCardRequest: boolean
+  pageType: string
+  showBlockedTransactions: boolean
+}
+
+export class TransactionBlockedV2 {
+  transaction: TransactionRecordV2
+  amount: number
+  merchant: string
+  city: string
+  countryCode: string
+
+  isCash (): boolean {
+    return this.transaction.title.includes('ATM ') // TODO add cash in
+  }
+
+  constructor (transaction: TransactionRecordV2) {
+    if (transaction.entryType !== 'BlockedTransaction') {
+      throw new Error('Invalid transaction entryType, expected BlockedTransaction')
+    }
+    this.transaction = transaction
+    this.amount = transaction.amount
+    const arr = transaction.title.split('>')
+    this.merchant = arr[0].trim()
+    const arr2 = arr[1].split(' ')
+    this.city = arr2[0].trim()
+    this.countryCode = arr2[1].trim()
+  }
+}
+
+export class TransactionTransferV2 {
+  transaction: TransactionRecordV2
+  amount: number
+
+  public get isIncome (): boolean {
+    return this.transaction.categoryCode === 'INCOME'
+  }
+
+  constructor (transaction: TransactionRecordV2) {
+    if (!TransactionTransferV2.isTransfer(transaction)) {
+      throw new Error('Invalid transaction categoryCode')
+    }
+    this.transaction = transaction
+    this.amount = transaction.amount
+  }
+
+  static isTransfer (transaction: TransactionRecordV2): boolean {
+    return transaction.entryType === 'StandardMovement' &&
+      (transaction.categoryCode === 'INCOME' || transaction.categoryCode === 'PAYMENTS' || transaction.categoryCode === 'BANK_INSURE_TAX')
+  }
+}
+
+export class TransactionStandardMovementV2 {
+  transaction: TransactionRecordV2
+  merchant: string
+  amount: number
+  date: Date
+  cardNum: string
+  mcc: number
+
+  isCash (): boolean {
+    return this.transaction.categoryCode === 'CASHOUT' // TODO add cash in
+  }
+
+  constructor (transaction: TransactionRecordV2) {
+    if (transaction.entryType !== 'StandardMovement') {
+      throw new Error('Invalid transaction entryType, expected StandardMovement')
+    }
+    if (TransactionTransferV2.isTransfer(transaction)) {
+      throw new Error('Invalid transaction categoryCode')
+    }
+    this.transaction = transaction
+    const arr = transaction.title.split(',')
+    this.merchant = arr[0].split('-')[1].trim()
+    this.amount = transaction.amount
+    this.date = new Date(arr[2])
+    this.cardNum = arr[arr.length - 1].trim().slice(-4)
+    this.mcc = Number.parseInt(arr[arr.length - 3].replace('MCC:', '').trim())
+  }
 }
 
 /* {
@@ -219,6 +352,7 @@ export interface Session {
   auth: Auth
   ibsAccessToken: string
 }
+
 export interface SessionV2 {
   cookies: string[]
   auth: AuthV2
@@ -243,7 +377,7 @@ export interface FetchedDeposit {
 
 export type FetchedAccount = FetchedAccountLoan | FetchedDeposit
 
-export interface FetchedAccountsV2{
+export interface FetchedAccountsV2 {
   accounts: AccountOrDebitCard[]
 }
 
@@ -291,3 +425,20 @@ export const APP_VERSION = '6.66.3'
 export const OS_VERSION = '10'
 
 export const PASSCODE = '12345'
+
+export const COMPANY_ID = '15622'
+
+export const createCashMovement = (currency: string, sum: number): Movement => {
+  return {
+    account: {
+      company: null,
+      instrument: currency,
+      syncIds: null,
+      type: AccountType.cash
+    },
+    fee: 0,
+    id: null,
+    invoice: null,
+    sum
+  }
+}

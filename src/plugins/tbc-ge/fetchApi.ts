@@ -18,7 +18,7 @@ import {
   OtpDevice,
   PasswordLoginRequestV2, CardProductV2,
   Session,
-  SessionV2
+  SessionV2, TransactionsByDateV2, FetchHistoryV2Data
 } from './models'
 import { encryptFirstPasscode, getCookies, getDeviceInfo, hashPasscodeRequest, hashPasswordRequest } from './utils'
 import forge from 'node-forge'
@@ -493,7 +493,6 @@ export async function fetchTrustDeviceV2 (deviceData: DeviceData, sessionId: str
     sessionId,
     orderType: 'Set'
   }
-  console.log('Cookies: ', cookies.join('; '))
   const response = await fetchApi('https://rmbgwauth.tbconline.ge/devicemanagement/api/v1/device/order', {
     body,
     headers: {
@@ -750,6 +749,7 @@ export async function fetchCardAndAccountsDashboardV2 (session: SessionV2): Prom
   })
   return response.body as CardsAndAccounts
 }
+
 export async function fetchAccountsList (session: Session): Promise<unknown[]> {
   const response = await fetchAuthorizedApi('https://tbconline.ge/ibs/delegate/rest/account/v2/accounts', {
     method: 'POST',
@@ -761,6 +761,68 @@ export async function fetchAccountsList (session: Session): Promise<unknown[]> {
   }, session)
   assert(isArray(response), 'unexpected response', response)
   return response
+}
+
+export async function fetchHistoryV2 (session: SessionV2, fromDate: Date, data: FetchHistoryV2Data[]): Promise<TransactionsByDateV2[]> {
+  const result: TransactionsByDateV2[] = []
+  let lastSortColKey: number | null = null
+  const pageSize = 100
+  const accounts = data.map(x => { return { ...x, type: '200' } })
+  let lastDate = new Date().getTime()
+  while (true) {
+    const b = {
+      coreAccountIds: accounts,
+      pageSize,
+      pageType: 'History',
+      isChildCardRequest: false,
+      showBlockedTransactions: false,
+      lastSortColKey: lastSortColKey != null ? lastSortColKey : undefined
+    }
+
+    const response = await fetchApi('https://rmbgw.tbconline.ge/pfm/api/v1/transactions/history', {
+      body: b,
+      method: 'POST',
+      headers: {
+        'User-Agent': `TBC a${APP_VERSION} (Android; Android ${OS_VERSION}; ANDROID_PHONE)`,
+        Cookie: session.cookies.join('; '),
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'Accept-Language': 'en-us'
+      },
+      parse: JSON.parse,
+      stringify: JSON.stringify
+    })
+
+    const transactionsByDate = response.body as TransactionsByDateV2[]
+    assert(isArray(transactionsByDate), 'unexpected response', transactionsByDate)
+    if (transactionsByDate.length === 0) {
+      break
+    }
+    let stop = false
+    for (const transactionByDate of transactionsByDate) {
+      if (transactionByDate.date <= fromDate.getTime()) {
+        stop = true
+      }
+      if (lastDate === transactionByDate.date) {
+        stop = true
+      }
+      if (lastDate > transactionByDate.date) {
+        lastDate = transactionByDate.date
+      }
+      for (const transaction of transactionByDate.transactions) {
+        if (transaction.transactionId !== null && transaction.transactionId !== 0) {
+          lastSortColKey = transaction.transactionId
+        }
+      }
+      result.push(transactionByDate)
+    }
+
+    if (stop) {
+      break
+    }
+  }
+
+  return result
 }
 
 export async function fetchHistory (accountId: number, session: Session, fromDate: Date, toDate: Date): Promise<unknown[]> {

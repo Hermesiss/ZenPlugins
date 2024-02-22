@@ -14,7 +14,7 @@ import {
   Preferences,
   CardProductV2,
   Session,
-  SessionV2, FetchedAccountsV2, CardsAndAccounts
+  SessionV2, FetchedAccountsV2, CardsAndAccounts, TransactionV2, TransactionRecordV2, TransactionsByDateV2, FetchHistoryV2Data
 } from './models'
 import {
   fetchAccountsList, fetchCardAndAccountsDashboardV2,
@@ -31,7 +31,7 @@ import {
   fetchGetLoginSalt,
   fetchGetRequestSalt,
   fetchGetSessionIdV2,
-  fetchHistory,
+  fetchHistory, fetchHistoryV2,
   fetchInitHeaders,
   fetchInitTrustedDevice,
   fetchLoans,
@@ -185,9 +185,7 @@ WxdnLbK6zKx6+4WL9qWhGu6R+7HNPAaKOb7KXEwjV2ekr6FVZneKRFe/XivMk66O
   const deviceInfo = generateDeviceInfo()
   const deviceData = generateDeviceData(deviceInfo)
   if (auth == null) {
-    console.log('=== AUTH IS NULL ===')
     loginInfo = await fetchLoginByPasswordV2({ username: login, password, deviceInfo, deviceData })
-    console.log('loginInfo', loginInfo)
     if (loginInfo.secondPhaseRequired) {
       cookies = await fetchCertifyLoginBySmsV2(await askOtpCodeV2('Enter the code from SMS'), loginInfo.transactionId)
     } else {
@@ -204,7 +202,6 @@ WxdnLbK6zKx6+4WL9qWhGu6R+7HNPAaKOb7KXEwjV2ekr6FVZneKRFe/XivMk66O
       }
     }
   } else {
-    console.log('=== AUTH IS NOT NULL ===')
     loginInfo = await fetchLoginByPasscodeV2(auth, deviceInfo, deviceData)
     if (loginInfo.secondPhaseRequired) {
       cookies = await fetchCertifyLoginBySmsV2(await askOtpCodeV2('Enter the code from SMS'), loginInfo.transactionId)
@@ -217,10 +214,7 @@ WxdnLbK6zKx6+4WL9qWhGu6R+7HNPAaKOb7KXEwjV2ekr6FVZneKRFe/XivMk66O
       auth
     }
   }
-  console.log('cookies', cookies)
-  console.log('deviceTrusted', deviceTrusted)
   const sessionId = await fetchGetSessionIdV2(cookies)
-  console.log('sessionId', sessionId)
   if (!deviceTrusted) {
     const orderId = await fetchTrustDeviceV2(deviceData, sessionId, cookies)
     const code = await askOtpCodeV2('Enter the second code from SMS')
@@ -343,6 +337,10 @@ WxdnLbK6zKx6+4WL9qWhGu6R+7HNPAaKOb7KXEwjV2ekr6FVZneKRFe/XivMk66O
     await fetchInitHeaders(session)
   }
   return session
+}
+
+export async function fetchTransactionsV2 (session: SessionV2, fromDate: Date, data: FetchHistoryV2Data[]): Promise<TransactionsByDateV2[]> {
+  return await fetchHistoryV2(session, fromDate, data)
 }
 
 export async function fetchCardsV2 (session: SessionV2): Promise<CardProductV2[]> {
