@@ -1,19 +1,23 @@
 import { AccountType, Amount, ExtendedTransaction, Merchant, Movement, Transaction } from '../../types/zenmoney'
 import {
+  CardProductV2,
+  CardsAndAccounts,
   ConvertedAccount,
   ConvertedCard,
   ConvertedCreditCard,
   ConvertedDeposit,
   ConvertedLoan,
   ConvertedProduct,
+  createCashMovement,
   FetchedAccount,
   FetchedAccounts,
-  CardProductV2,
-  PreparedCardV2,
-  CardsAndAccounts,
+  FetchHistoryV2Data,
   PreparedAccountV2,
+  PreparedCardV2,
+  TransactionBlockedV2,
   TransactionsByDateV2,
-  TransactionBlockedV2, TransactionTransferV2, TransactionStandardMovementV2, FetchHistoryV2Data, createCashMovement
+  TransactionStandardMovementV2,
+  TransactionTransferV2
 } from './models'
 import { getArray, getBoolean, getNumber, getOptArray, getOptNumber, getOptString, getString } from '../../types/get'
 import { padStart, pullAll, uniqBy } from 'lodash'
@@ -422,8 +426,11 @@ export function convertTransactionsV2 (transactionRecordsByDate: TransactionsByD
       let secondMovement: Movement | null = null
       let comment: string | null = null
       let invoice: Amount | null = null
+      let id: string
+      let dateNum: number | null = null
       if (transactionRecord.entryType === 'BlockedTransaction') {
-        const blockedTransaction = new TransactionBlockedV2(transactionRecord)
+        const blockedTransaction = new TransactionBlockedV2(transactionRecord, transactionRecords.date)
+        id = blockedTransaction.id
         amount = blockedTransaction.amount
         // TODO add invoice
         if (blockedTransaction.isCash()) {
@@ -439,12 +446,14 @@ export function convertTransactionsV2 (transactionRecordsByDate: TransactionsByD
         }
       } else {
         amount = transactionRecord.amount
+        id = transactionRecord.movementId
         if (TransactionTransferV2.isTransfer(transactionRecord)) {
           const transfer = new TransactionTransferV2(transactionRecord)
           comment = transfer.transaction.title
           merchant = null
         } else {
           const movement = new TransactionStandardMovementV2(transactionRecord)
+          dateNum = movement.date.getTime()
           if (movement.needInvoice()) {
             invoice = movement.invoice!
           }
@@ -465,7 +474,7 @@ export function convertTransactionsV2 (transactionRecordsByDate: TransactionsByD
       let movements: [Movement] | [Movement, Movement]
 
       const firstMovement: Movement = {
-        id: null,
+        id,
         account: { id: data.account.id },
         invoice,
         sum: amount,
@@ -482,9 +491,13 @@ export function convertTransactionsV2 (transactionRecordsByDate: TransactionsByD
         ]
       }
 
+      if (dateNum == null || Number.isNaN(dateNum)) {
+        dateNum = transactionRecords.date
+      }
+
       const transaction: ExtendedTransaction = {
         hold: transactionRecord.dispute ?? false,
-        date: new Date(transactionRecords.date),
+        date: new Date(dateNum),
         movements,
         merchant,
         comment,
@@ -508,7 +521,7 @@ export function convertTransaction (apiTransaction: unknown, product: ConvertedP
     const sum = getNumber(apiTransaction, 'depositAmount') > 0 ? getNumber(apiTransaction, 'depositAmount') : -getNumber(apiTransaction, 'withdrawnDepositAmount')
     groupKeys.push(product.account.id)
     groupKeys.push(`${getNumber(apiTransaction, 'movementDate')}_${instrument}_${Math.abs(sum)}`)
-    const transaction: ExtendedTransaction = {
+    return {
       hold: false,
       date,
       movements: [
@@ -524,7 +537,6 @@ export function convertTransaction (apiTransaction: unknown, product: ConvertedP
       comment: null,
       groupKeys
     }
-    return transaction
   }
 
   const date = new Date(getNumber(apiTransaction, 'date'))

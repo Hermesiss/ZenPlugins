@@ -766,6 +766,7 @@ export async function fetchAccountsList (session: Session): Promise<unknown[]> {
 export async function fetchHistoryV2 (session: SessionV2, fromDate: Date, data: FetchHistoryV2Data): Promise<TransactionsByDateV2[]> {
   const result: TransactionsByDateV2[] = []
   let lastSortColKey: number | null = null
+  let lastBlockedMovementDate: string | null = null
   const pageSize = 100
   const coreAccountIds = [
     {
@@ -783,7 +784,8 @@ export async function fetchHistoryV2 (session: SessionV2, fromDate: Date, data: 
       pageType: 'History',
       isChildCardRequest: false,
       showBlockedTransactions: false,
-      lastSortColKey: lastSortColKey != null ? lastSortColKey : undefined
+      lastSortColKey: lastSortColKey != null ? lastSortColKey : undefined,
+      lastBlockedMovementDate: lastBlockedMovementDate != null ? lastBlockedMovementDate : undefined
     }
 
     const response = await fetchApi('https://rmbgw.tbconline.ge/pfm/api/v1/transactions/history', {
@@ -819,6 +821,9 @@ export async function fetchHistoryV2 (session: SessionV2, fromDate: Date, data: 
       for (const transaction of transactionByDate.transactions) {
         if (transaction.transactionId !== null && transaction.transactionId !== 0) {
           lastSortColKey = transaction.transactionId
+        }
+        if (transaction.blockedMovementDate !== null && transaction.blockedMovementDate !== '0') {
+          lastBlockedMovementDate = transaction.blockedMovementDate
         }
       }
       result.push(transactionByDate)

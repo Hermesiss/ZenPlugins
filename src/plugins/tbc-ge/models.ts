@@ -1,4 +1,5 @@
 import { Account, AccountOrCard, AccountType, Amount, Movement, Transaction } from '../../types/zenmoney'
+import moment from 'moment'
 
 export type OtpDevice = 'SMS_OTP' | 'TOKEN_GEMALTO' | 'TOKEN_VASCO'
 
@@ -136,12 +137,13 @@ export class TransactionBlockedV2 {
   merchant: string
   city: string
   countryCode: string
+  id: string
 
   isCash (): boolean {
     return this.transaction.title.includes('ATM ') // TODO add cash in
   }
 
-  constructor (transaction: TransactionRecordV2) {
+  constructor (transaction: TransactionRecordV2, date: number) {
     if (transaction.entryType !== 'BlockedTransaction') {
       throw new Error('Invalid transaction entryType, expected BlockedTransaction')
     }
@@ -152,6 +154,12 @@ export class TransactionBlockedV2 {
     const arr2 = arr[1].split(' ')
     this.city = arr2[0].trim()
     this.countryCode = arr2[1].trim()
+    const idLine = transaction.blockedMovementDate!.toString() +
+      transaction.title +
+      transaction.amount.toString() +
+      transaction.blockedMovementCardId!.toString() +
+      transaction.blockedMovementIban!
+    this.id = Buffer.from(idLine).toString('base64')
   }
 }
 
@@ -227,7 +235,8 @@ export class TransactionStandardMovementV2 {
     } else {
       this.invoice = null
     }
-    this.date = new Date(arr[2])
+    const momentDate = moment(arr[2].trim(), 'MMM DD YYYY h:mmA')
+    this.date = momentDate.toDate()
     this.cardNum = arr[arr.length - 1].trim().slice(-4)
     this.mcc = Number.parseInt(arr[arr.length - 3].replace('MCC:', '').trim())
   }
