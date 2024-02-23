@@ -41,7 +41,7 @@ import {
   fetchLoginByPasswordV2,
   fetchRegisterDevice,
   fetchRegisterDeviceV2,
-  fetchTrustDeviceV2
+  fetchTrustDeviceV2, fetchUnTrustDeviceV2
 } from './fetchApi'
 import { generateRandomString } from '../../common/utils'
 import { InvalidOtpCodeError } from '../../errors'
@@ -216,9 +216,23 @@ WxdnLbK6zKx6+4WL9qWhGu6R+7HNPAaKOb7KXEwjV2ekr6FVZneKRFe/XivMk66O
   }
   const sessionId = await fetchGetSessionIdV2(cookies)
   if (!deviceTrusted) {
-    const orderId = await fetchTrustDeviceV2(deviceData, sessionId, cookies)
-    const code = await askOtpCodeV2('Enter the second code from SMS')
-    const trustId = await fetchConfirmTrustedDeviceV2(code, orderId, cookies)
+    let orderId = await fetchTrustDeviceV2(deviceData, sessionId, cookies)
+    let code = await askOtpCodeV2('Enter the second code from SMS for trusting the device')
+    let trustId: string | null = null
+
+    trustId = await fetchConfirmTrustedDeviceV2(code, orderId, cookies)
+    if (trustId == null) {
+      await ZenMoney.alert('Device was already trusted, but we don\'t have the trustedDeviceId. We need to untrust the device and trust it again')
+      await fetchUnTrustDeviceV2(deviceData, sessionId, cookies)
+      orderId = await fetchTrustDeviceV2(deviceData, sessionId, cookies)
+      code = await askOtpCodeV2('Enter the last code from SMS for trusting the device again')
+      trustId = await fetchConfirmTrustedDeviceV2(code, orderId, cookies)
+    }
+
+    if (trustId == null) {
+      throw new InvalidOtpCodeError('Device trust failed')
+    }
+
     session.auth.trustedDeviceId = trustId
   }
 

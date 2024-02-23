@@ -480,6 +480,58 @@ interface TrustedDeviceInfo {
   certRequired: boolean
 }
 
+export async function fetchUnTrustDeviceV2 (deviceData: DeviceData, sessionId: string, cookies: string[]): Promise<boolean> {
+  const body = {
+    deviceId: deviceData.deviceId,
+    sessionId,
+    orderType: 'Unset',
+    channel: 'RMB'
+  }
+
+  const headers = {
+    'User-Agent': `TBC a${APP_VERSION} (Android; Android ${OS_VERSION}; ANDROID_PHONE)`,
+    'Content-Type': 'application/json; charset=UTF-8',
+    'Accept-Language': 'en-us',
+    'APP-VERSION': APP_VERSION,
+    'DEVICE-ID': deviceData.deviceId,
+    'DEVICE-MANUFACTURER': deviceData.manufacturer,
+    'DEVICE-MODEL': deviceData.modelNumber,
+    'DEVICE-OS': 'Android 7.1.1',
+    'DEVICE-ROOTED': 'false',
+    'DEVICE-TYPE': 'ANDROID_PHONE',
+    Cookie: cookies.join('; ')
+  }
+  const response = await fetchApi('https://rmbgwauth.tbconline.ge/devicemanagement/api/v1/device/order', {
+    body,
+    headers,
+    method: 'POST',
+    stringify: JSON.stringify,
+    parse: JSON.parse,
+    sanitizeRequestLog: {
+      body: { sessionId: true }
+    }
+  })
+
+  const orderId = getNumber(response.body, 'orderId')
+
+  const confirmResponse = await fetchApi('https://rmbgwauth.tbconline.ge/devicemanagement/api/v1/device/order/confirm', {
+    body: {
+      orderId,
+      orderType: 'Unset'
+    },
+    headers,
+    method: 'POST',
+    stringify: JSON.stringify,
+    parse: JSON.parse,
+    sanitizeRequestLog: {
+      body: { sessionId: true }
+    }
+  })
+
+  const returnDeviceId = getString(confirmResponse.body, 'deviceId')
+  return returnDeviceId === deviceData.deviceId
+}
+
 /**
  * Attempts to trust the device
  * @param deviceData
@@ -553,7 +605,7 @@ export async function fetchInitTrustedDevice (session: { auth: { device: Device 
  * @param cookies
  * @return trustId
  */
-export async function fetchConfirmTrustedDeviceV2 (authorizationCode: string, orderId: number, cookies: string[]): Promise<string> {
+export async function fetchConfirmTrustedDeviceV2 (authorizationCode: string, orderId: number, cookies: string[]): Promise<string | null> {
   const body = {
     orderId, authorizationCode, orderType: 'Set'
   }
@@ -570,6 +622,14 @@ export async function fetchConfirmTrustedDeviceV2 (authorizationCode: string, or
     sanitizeRequestLog: { body: { authorizationCode: true } },
     sanitizeResponseLog: { body: { trustId: true } }
   })
+
+  if (response.status === 500) {
+    const title = get(response.body, 'title', null)
+    if (title === 'Already trusted') {
+      return null
+    }
+  }
+
   return getString(response.body, 'trustId')
 }
 
