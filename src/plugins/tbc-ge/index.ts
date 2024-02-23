@@ -54,7 +54,7 @@ export const scrape: ScrapeFunc<Preferences> = async ({ preferences, fromDate, t
 
   for (const data of fetchHistoryV2Data) {
     const tr = await fetchTransactionsV2(session, fromDate, data)
-    const t = convertTransactionsV2(tr, data)
+    const t = convertTransactionsV2(tr, fromDate, data)
     for (const transaction of t) {
       const transactionId = transaction.movements[0].id!
       transactionsById.set(transactionId, transaction)

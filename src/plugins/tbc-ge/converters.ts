@@ -414,7 +414,7 @@ function parseOuterTransfer (transaction: Transaction, apiTransaction: unknown, 
   return false
 }
 
-export function convertTransactionsV2 (transactionRecordsByDate: TransactionsByDateV2[], data: FetchHistoryV2Data): ExtendedTransaction[] {
+export function convertTransactionsV2 (transactionRecordsByDate: TransactionsByDateV2[], fromDate: Date, data: FetchHistoryV2Data): ExtendedTransaction[] {
   const transactions: ExtendedTransaction[] = []
   for (const transactionRecords of transactionRecordsByDate) {
     for (const transactionRecord of transactionRecords.transactions) {
@@ -495,9 +495,15 @@ export function convertTransactionsV2 (transactionRecordsByDate: TransactionsByD
         dateNum = transactionRecords.date
       }
 
+      const date = new Date(dateNum)
+
+      if (date < fromDate) {
+        continue
+      }
+
       const transaction: ExtendedTransaction = {
         hold: transactionRecord.dispute ?? false,
-        date: new Date(dateNum),
+        date,
         movements,
         merchant,
         comment,
