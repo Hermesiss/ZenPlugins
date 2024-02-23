@@ -1,5 +1,5 @@
 import { Account, ExtendedTransaction, ScrapeFunc } from '../../types/zenmoney'
-import { fetchAccountsV2, fetchCardsV2, fetchTransactionsV2, loginV2 } from './api'
+import { fetchAccountsV2, fetchCardsV2, fetchDepositsV2, fetchLoansV2, fetchTransactionsV2, loginV2 } from './api'
 import { convertAccountsV2, convertCardsV2, convertTransactionsV2 } from './converters'
 import { AuthV2, FetchHistoryV2Data, Preferences } from './models'
 import { adjustTransactions } from '../../common/transactionGroupHandler'
@@ -45,8 +45,9 @@ export const scrape: ScrapeFunc<Preferences> = async ({ preferences, fromDate, t
       id: preparedAccount.account.id
     })
   }))
-  // TODO add deposits https://rmbgw.tbconline.ge/deposits/api/v1/deposits
-  // TODO add loans https://rmbgw.tbconline.ge/loans/api/v1/list?ClientRoles=CoBorrower&ShowCards=false
+
+  await fetchLoansV2(session)
+  await fetchDepositsV2(session)
 
   for (const account of accounts) {
     accountToSyncIds.set(account.id, [account.id])

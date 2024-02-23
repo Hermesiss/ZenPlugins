@@ -754,6 +754,35 @@ export async function fetchDepositStatements (id: number, session: Session): Pro
   return response
 }
 
+export async function fetchApiDepositsV2 (session: SessionV2): Promise<unknown> {
+  const response = await fetchApi('https://rmbgw.tbconline.ge/deposits/api/v1/deposits', {
+    method: 'GET',
+    headers: {
+      'User-Agent': `TBC a${APP_VERSION} (Android; Android ${OS_VERSION}; ANDROID_PHONE)`,
+      Cookie: session.cookies.join('; '),
+      'Content-Type': 'application/json; charset=UTF-8',
+      'Accept-Language': 'en-us'
+    },
+    parse: JSON.parse
+  })
+
+  return response.body
+}
+
+export async function fetchApiLoansV2 (session: SessionV2): Promise<unknown> {
+  const response = await fetchApi('https://rmbgw.tbconline.ge/loans/api/v1/list?ClientRoles=CoBorrower&ShowCards=false', {
+    method: 'GET',
+    headers: {
+      'User-Agent': `TBC a${APP_VERSION} (Android; Android ${OS_VERSION}; ANDROID_PHONE)`,
+      Cookie: session.cookies.join('; '),
+      'Content-Type': 'application/json; charset=UTF-8',
+      'Accept-Language': 'en-us'
+    },
+    parse: JSON.parse
+  })
+  return response.body
+}
+
 export async function fetchDashboard (session: Session): Promise<{
   creditCards: unknown[]
   creditCardsWithBlockations: unknown[]

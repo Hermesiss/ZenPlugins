@@ -17,7 +17,7 @@ import {
   SessionV2, CardsAndAccounts, TransactionsByDateV2, FetchHistoryV2Data
 } from './models'
 import {
-  fetchAccountsList, fetchCardAndAccountsDashboardV2,
+  fetchAccountsList, fetchApiDepositsV2, fetchApiLoansV2, fetchCardAndAccountsDashboardV2,
   fetchCardsListV2,
   fetchCertifyLoginByPasscode,
   fetchCertifyLoginBySms,
@@ -351,6 +351,14 @@ WxdnLbK6zKx6+4WL9qWhGu6R+7HNPAaKOb7KXEwjV2ekr6FVZneKRFe/XivMk66O
     await fetchInitHeaders(session)
   }
   return session
+}
+
+export async function fetchDepositsV2 (session: SessionV2): Promise<unknown> {
+  return await fetchApiDepositsV2(session)
+}
+
+export async function fetchLoansV2 (session: SessionV2): Promise<unknown> {
+  return await fetchApiLoansV2(session)
 }
 
 export async function fetchTransactionsV2 (session: SessionV2, fromDate: Date, data: FetchHistoryV2Data): Promise<TransactionsByDateV2[]> {
