@@ -1,5 +1,5 @@
 import { Account, AccountOrCard, AccountType, Amount, Movement, Transaction } from '../../types/zenmoney'
-import moment from 'moment-timezone'
+import moment from 'moment'
 export type OtpDevice = 'SMS_OTP' | 'TOKEN_GEMALTO' | 'TOKEN_VASCO'
 
 export interface Signature {
@@ -162,7 +162,7 @@ export class TransactionBlockedV2 {
         transaction.blockedMovementIban!
       this.id = Buffer.from(idLine).toString('base64')
     } catch ({ message }) {
-      throw new Error(`Error parsing title in TransactionBlockedV2: ${message}`)
+      throw new Error(`Error parsing title "${transaction.title}" in TransactionBlockedV2: ${message}`)
     }
   }
 }
@@ -212,7 +212,7 @@ export class TransactionCustomMobileV2 {
       this.merchantCountry = 'Georgia'
       this.amount = -Number.parseFloat(arr[2].split(':')[1])
     } catch ({ message }) {
-      throw new Error(`Error parsing title in TransactionCustomMobileV2: ${message}`)
+      throw new Error(`Error parsing title "${transaction.title}" in TransactionCustomMobileV2: ${message}`)
     }
   }
 }
@@ -269,13 +269,15 @@ export class TransactionStandardMovementV2 {
         this.invoice = null
       }
       const dateTimeString = arr[2].trim()
-      const timezoneName = 'Asia/Tbilisi'
-      const momentDate = moment.tz(dateTimeString, 'MMM D YYYY h:mmA', timezoneName)
+      const offset = new Date().getTimezoneOffset()
+      const targetOffset = -4 * 60 // Georgia
+      const momentDate = moment(dateTimeString, 'MMM D YYYY h:mmA')
+        .add(offset - targetOffset, 'minutes')
       this.date = momentDate.toDate()
       this.cardNum = arr[arr.length - 1].trim().slice(-4)
       this.mcc = Number.parseInt(arr[arr.length - 3].replace('MCC:', '').trim())
     } catch ({ message }) {
-      throw new Error(`Error parsing title in TransactionStandardMovementV2: ${message}`)
+      throw new Error(`Error parsing title "${transaction.title}" in TransactionStandardMovementV2: ${message}`)
     }
   }
 }
