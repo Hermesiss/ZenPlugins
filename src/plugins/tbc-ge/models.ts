@@ -1,6 +1,5 @@
 import { Account, AccountOrCard, AccountType, Amount, Movement, Transaction } from '../../types/zenmoney'
-import moment from 'moment'
-
+import moment from 'moment-timezone'
 export type OtpDevice = 'SMS_OTP' | 'TOKEN_GEMALTO' | 'TOKEN_VASCO'
 
 export interface Signature {
@@ -269,7 +268,9 @@ export class TransactionStandardMovementV2 {
       } else {
         this.invoice = null
       }
-      const momentDate = moment(arr[2].trim(), 'MMM D YYYY h:mmA')
+      const dateTimeString = arr[2].trim()
+      const timezoneName = 'Asia/Tbilisi'
+      const momentDate = moment.tz(dateTimeString, 'MMM D YYYY h:mmA', timezoneName)
       this.date = momentDate.toDate()
       this.cardNum = arr[arr.length - 1].trim().slice(-4)
       this.mcc = Number.parseInt(arr[arr.length - 3].replace('MCC:', '').trim())
