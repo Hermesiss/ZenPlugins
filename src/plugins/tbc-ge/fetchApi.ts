@@ -27,6 +27,18 @@ import { retry } from '../../common/retry'
 
 async function fetchApi (url: string, options: FetchOptions): Promise<FetchResponse> {
   let response: FetchResponse
+  if (!options.sanitizeRequestLog) {
+    options.sanitizeRequestLog = {}
+  }
+  // @ts-expect-error Disallowing cookies in request logs
+  options.sanitizeRequestLog.headers = { Cookie: true }
+  if (!options.sanitizeResponseLog) {
+    options.sanitizeResponseLog = {}
+  }
+  // @ts-expect-error Disallowing cookies in response logs
+  options.sanitizeResponseLog.headers = { 'set-cookie': true }
+  console.log('sanitized request', options.sanitizeRequestLog)
+  console.log('sanitized response', options.sanitizeResponseLog)
   try {
     response = await fetch(url, options)
   } catch (e) {
@@ -153,8 +165,7 @@ export async function fetchLoginByPasswordV2 ({ username, password, deviceInfo, 
       stringify: JSON.stringify,
       parse: JSON.parse,
       method: 'POST',
-      sanitizeRequestLog: { body: { username: true, password: true } },
-      sanitizeResponseLog: { body: { transactionId: true } }
+      sanitizeRequestLog: { body: { username: true, password: true } }
     })
 
   if (response.status === 401) {
@@ -231,7 +242,7 @@ export async function fetchLoginByPasscodeV2 (auth: AuthV2, deviceInfo: DeviceIn
     method: 'POST',
     stringify: JSON.stringify,
     parse: JSON.parse,
-    sanitizeRequestLog: { body: { userName: true, passcode: true, registrationId: true } }
+    sanitizeRequestLog: { body: { userName: true, passcode: true, registrationId: true, deviceInfo: true, deviceData: true, deviceId: true, trustedDeviceId: true } }
   })
   const loginResponse = response.body as LoginResponse
   loginResponse.cookies = getCookies(response)
@@ -296,7 +307,11 @@ export async function fetchCertifyLoginBySmsV2 (code: string, transactionId: str
     method: 'POST',
     stringify: JSON.stringify,
     parse: JSON.parse,
-    sanitizeRequestLog: { body: { signature: { response: true } } }
+    sanitizeRequestLog: {
+      body: {
+        signature: { response: true }
+      }
+    }
   })
   const data = response.body as CertifyLoginResponseV2
   if (!data?.success) {
@@ -317,10 +332,11 @@ export async function fetchGetSessionIdV2 (cookies: string[]): Promise<string> {
       Cookie: cookies.join('; ')
     },
     method: 'GET',
-    parse: JSON.parse
+    parse: JSON.parse,
+    sanitizeResponseLog: {
+      body: true
+    }
   })
-  const clientNameEn = getString(user.body, 'clientNameEn')
-  console.log('clientNameEn', clientNameEn)
   return getString(user.body, 'sessionId')
 }
 
@@ -855,7 +871,7 @@ export async function fetchAccountsList (session: Session): Promise<unknown[]> {
 export async function fetchHistoryV2 (session: SessionV2, fromDate: Date, data: FetchHistoryV2Data): Promise<TransactionsByDateV2[]> {
   const result: TransactionsByDateV2[] = []
   let lastSortColKey: number | null = null
-  let lastBlockedMovementDate: string | null = null
+  let lastBlockedMovementDate: number | null = null
   const pageSize = 100
   const coreAccountIds = [
     {
@@ -911,7 +927,7 @@ export async function fetchHistoryV2 (session: SessionV2, fromDate: Date, data: 
         if (transaction.transactionId !== null && transaction.transactionId !== 0) {
           lastSortColKey = transaction.transactionId
         }
-        if (transaction.blockedMovementDate !== null && transaction.blockedMovementDate !== '0') {
+        if (transaction.blockedMovementDate !== null && transaction.blockedMovementDate !== 0) {
           lastBlockedMovementDate = transaction.blockedMovementDate
         }
       }

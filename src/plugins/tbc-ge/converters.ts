@@ -14,7 +14,7 @@ import {
   FetchHistoryV2Data,
   PreparedAccountV2,
   PreparedCardV2,
-  TransactionBlockedV2,
+  TransactionBlockedV2, TransactionCustomMobileV2,
   TransactionsByDateV2,
   TransactionStandardMovementV2,
   TransactionTransferV2
@@ -446,11 +446,22 @@ export function convertTransactionsV2 (transactionRecordsByDate: TransactionsByD
         }
       } else {
         amount = transactionRecord.amount
-        id = transactionRecord.movementId
+        id = transactionRecord.movementId!
         if (TransactionTransferV2.isTransfer(transactionRecord)) {
           const transfer = new TransactionTransferV2(transactionRecord)
           comment = transfer.transaction.title
           merchant = null
+        } else if (TransactionCustomMobileV2.isCustomMobile(transactionRecord)) {
+          const mobile = new TransactionCustomMobileV2(transactionRecord)
+          id = transactionRecord.movementId!
+          amount = mobile.amount
+          merchant = {
+            city: null,
+            country: mobile.merchantCountry,
+            title: mobile.merchant,
+            mcc: null,
+            location: null
+          }
         } else {
           const movement = new TransactionStandardMovementV2(transactionRecord)
           dateNum = movement.date.getTime()

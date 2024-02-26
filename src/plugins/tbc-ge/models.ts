@@ -73,31 +73,31 @@ export interface FetchHistoryV2Data {
 }
 
 export interface TransactionRecordV2 {
-  transactionId: number
-  accountId: number
+  transactionId: number // 0 if blocked
+  accountId: number | null // null if blocked
   entryType: 'StandardMovement' | 'BlockedTransaction'
-  movementId: string
-  transactionDate: null | string
-  localTime: null | string
+  movementId: string | null // null if blocked
+  // transactionDate: null // always null
+  // localTime: null // always null
   repeatTransaction: null | boolean
   setAutomaticTransfer: null | boolean
   payback: null | boolean
   saveAsTemplate: null | boolean
   shareReceipt: null | boolean
-  dispute: null | boolean
+  dispute: null | boolean // true if blocked
   title: string
   subTitle: string
   amount: number
   currency: string
-  categoryCode: string
+  categoryCode: string | null // null if blocked
   subCategoryCode: string
   isSplit: null | boolean
-  transactionSubtype: number
-  blockedMovementDate: null | string
-  blockedMovementCardId: null | number
-  blockedMovementIban: null | string
-  transactionStatus: string
-  isDebit: boolean
+  transactionSubtype: number | null // null if blocked
+  blockedMovementDate: null | number // null if not blocked
+  blockedMovementCardId: null | number // null if not blocked
+  blockedMovementIban: null | string // null if not blocked
+  transactionStatus: string //  Always 'Green'
+  isDebit: boolean // false if blocked
 }
 
 export interface TransactionsByDateV2 {
@@ -149,17 +149,22 @@ export class TransactionBlockedV2 {
     }
     this.transaction = transaction
     this.amount = transaction.amount
-    const arr = transaction.title.split('>')
-    this.merchant = arr[0].trim()
-    const arr2 = arr[1].split(' ')
-    this.city = arr2[0].trim()
-    this.countryCode = arr2[1].trim()
-    const idLine = transaction.blockedMovementDate!.toString() +
-      transaction.title +
-      transaction.amount.toString() +
-      transaction.blockedMovementCardId!.toString() +
-      transaction.blockedMovementIban!
-    this.id = Buffer.from(idLine).toString('base64')
+
+    try {
+      const arr = transaction.title.split('>')
+      this.merchant = arr[0].trim()
+      const arr2 = arr[1].split(' ')
+      this.city = arr2[0].trim()
+      this.countryCode = arr2[1].trim()
+      const idLine = transaction.blockedMovementDate!.toString() +
+        transaction.title +
+        transaction.amount.toString() +
+        transaction.blockedMovementCardId!.toString() +
+        transaction.blockedMovementIban!
+      this.id = Buffer.from(idLine).toString('base64')
+    } catch ({ message }) {
+      throw new Error(`Error parsing title in TransactionBlockedV2: ${message}`)
+    }
   }
 }
 
@@ -182,6 +187,34 @@ export class TransactionTransferV2 {
   static isTransfer (transaction: TransactionRecordV2): boolean {
     return transaction.entryType === 'StandardMovement' &&
       (transaction.categoryCode === 'INCOME' || transaction.categoryCode === 'PAYMENTS' || transaction.categoryCode === 'BANK_INSURE_TAX')
+  }
+}
+
+export class TransactionCustomMobileV2 {
+  transaction: TransactionRecordV2
+  merchant: string
+  merchantCountry: string
+  amount: number
+
+  static isCustomMobile (transaction: TransactionRecordV2): boolean {
+    return transaction.subTitle === 'Mobile' && transaction.title.startsWith('Cellfie')
+  }
+
+  constructor (transaction: TransactionRecordV2) {
+    if (transaction.subTitle !== 'Mobile') {
+      throw new Error('Transaction is not mobile, the subtitle is ' + transaction.subTitle)
+    }
+
+    this.transaction = transaction
+    try {
+      // title is in format 'Cellfie;599000111;თანხა:10.00'
+      const arr = transaction.title.split(';')
+      this.merchant = arr[0]
+      this.merchantCountry = 'Georgia'
+      this.amount = -Number.parseFloat(arr[2].split(':')[1])
+    } catch ({ message }) {
+      throw new Error(`Error parsing title in TransactionCustomMobileV2: ${message}`)
+    }
   }
 }
 
@@ -215,30 +248,34 @@ export class TransactionStandardMovementV2 {
     if (TransactionTransferV2.isTransfer(transaction)) {
       throw new Error('Invalid transaction categoryCode')
     }
-    this.transaction = transaction
-    const arr = transaction.title.split(',')
-    this.merchant = arr[0].split('-')[1].trim()
-    this.amount = transaction.amount
-    const invoiceStr = arr[1].split(' ')
-    const invoice = {
-      sum: Number.parseFloat(invoiceStr[invoiceStr.length - 2]),
-      instrument: invoiceStr[invoiceStr.length - 1]
-    }
+    try {
+      this.transaction = transaction
+      const arr = transaction.title.split(',')
+      this.merchant = arr[0].split('-')[1].trim()
+      this.amount = transaction.amount
+      const invoiceStr = arr[1].split(' ')
+      const invoice = {
+        sum: Number.parseFloat(invoiceStr[invoiceStr.length - 2]),
+        instrument: invoiceStr[invoiceStr.length - 1]
+      }
 
-    const sign = Math.sign(this.amount)
-    if (sign === -1) {
-      invoice.sum = -invoice.sum
-    }
+      const sign = Math.sign(this.amount)
+      if (sign === -1) {
+        invoice.sum = -invoice.sum
+      }
 
-    if (!Number.isNaN(invoice.sum)) {
-      this.invoice = invoice
-    } else {
-      this.invoice = null
+      if (!Number.isNaN(invoice.sum)) {
+        this.invoice = invoice
+      } else {
+        this.invoice = null
+      }
+      const momentDate = moment(arr[2].trim(), 'MMM D YYYY h:mmA')
+      this.date = momentDate.toDate()
+      this.cardNum = arr[arr.length - 1].trim().slice(-4)
+      this.mcc = Number.parseInt(arr[arr.length - 3].replace('MCC:', '').trim())
+    } catch ({ message }) {
+      throw new Error(`Error parsing title in TransactionStandardMovementV2: ${message}`)
     }
-    const momentDate = moment(arr[2].trim(), 'MMM DD YYYY h:mmA')
-    this.date = momentDate.toDate()
-    this.cardNum = arr[arr.length - 1].trim().slice(-4)
-    this.mcc = Number.parseInt(arr[arr.length - 3].replace('MCC:', '').trim())
   }
 }
 
