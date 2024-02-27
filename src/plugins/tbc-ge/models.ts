@@ -1,7 +1,5 @@
 import { Account, AccountOrCard, AccountType, Amount, Movement, Transaction } from '../../types/zenmoney'
-import moment from 'moment'
-export type OtpDevice = 'SMS_OTP' | 'TOKEN_GEMALTO' | 'TOKEN_VASCO'
-
+import { parsePOSDateString } from './converters'
 export interface Signature {
   response: null
   status: string
@@ -250,30 +248,41 @@ export class TransactionStandardMovementV2 {
     try {
       this.transaction = transaction
       const arr = transaction.title.split(',')
-      this.merchant = arr[0].split('-')[1].trim()
+      let invoice: { sum: number, instrument: string } | undefined
+      let sumIndex = 0
       this.amount = transaction.amount
-      const invoiceStr = arr[1].split(' ')
-      const invoice = {
-        sum: Number.parseFloat(invoiceStr[invoiceStr.length - 2]),
-        instrument: invoiceStr[invoiceStr.length - 1]
+      for (let i = 0; i < arr.length; i++) {
+        const str = arr[i].trim()
+        if (str.startsWith('თანხა') || str.startsWith('ტრანზაქციის თანხა')) {
+          sumIndex = i
+          // format is თანხა 10.00 USD
+          const invoiceStr = str.split(' ')
+          invoice = {
+            sum: Number.parseFloat(invoiceStr[invoiceStr.length - 2]),
+            instrument: invoiceStr[invoiceStr.length - 1]
+          }
+          const sign = Math.sign(this.amount)
+          if (sign === -1) {
+            invoice.sum = -invoice.sum
+          }
+          break
+        }
       }
 
-      const sign = Math.sign(this.amount)
-      if (sign === -1) {
-        invoice.sum = -invoice.sum
-      }
-
-      if (!Number.isNaN(invoice.sum)) {
+      if (invoice !== undefined && !Number.isNaN(invoice.sum)) {
         this.invoice = invoice
       } else {
         this.invoice = null
       }
-      const dateTimeString = arr[2].trim()
-      const offset = new Date().getTimezoneOffset()
-      const targetOffset = -4 * 60 // Georgia
-      const momentDate = moment(dateTimeString, 'MMM D YYYY h:mmA')
-        .add(offset - targetOffset, 'minutes')
-      this.date = momentDate.toDate()
+
+      // arr from 0 to sumIndex
+      this.merchant = arr.slice(0, sumIndex).join(', ')
+        .replace('POS - ', '')
+        .replace('POS wallet - ', '')
+        .trim()
+
+      const dateTimeString = arr[sumIndex + 1].trim()
+      this.date = parsePOSDateString(dateTimeString)
       this.cardNum = arr[arr.length - 1].trim().slice(-4)
       this.mcc = Number.parseInt(arr[arr.length - 3].replace('MCC:', '').trim())
     } catch ({ message }) {

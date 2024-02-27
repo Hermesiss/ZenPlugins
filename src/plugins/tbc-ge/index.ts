@@ -11,7 +11,8 @@ export const scrape: ScrapeFunc<Preferences> = async ({ preferences, fromDate, t
   ZenMoney.saveData()
 
   const accounts: Account[] = []
-  // const transactions: ExtendedTransaction[] = []
+  await fetchLoansV2(session)
+  await fetchDepositsV2(session)
   const transactionsById = new Map<string, ExtendedTransaction>()
   const fetchHistoryV2Data: FetchHistoryV2Data[] = []
   const accountToSyncIds = new Map<string, string[]>()
@@ -45,9 +46,6 @@ export const scrape: ScrapeFunc<Preferences> = async ({ preferences, fromDate, t
       id: preparedAccount.account.id
     })
   }))
-
-  await fetchLoansV2(session)
-  await fetchDepositsV2(session)
 
   for (const account of accounts) {
     accountToSyncIds.set(account.id, [account.id])
