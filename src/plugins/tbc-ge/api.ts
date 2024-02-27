@@ -132,11 +132,11 @@ WxdnLbK6zKx6+4WL9qWhGu6R+7HNPAaKOb7KXEwjV2ekr6FVZneKRFe/XivMk66O
   const deviceInfo = generateDeviceInfo()
   const deviceData = generateDeviceData(deviceInfo)
   if (auth == null) {
+    if (isInBackground) {
+      throw new Error('Second phase required, cannot proceed in background mode.')
+    }
     loginInfo = await fetchLoginByPasswordV2({ username: login, password, deviceInfo, deviceData })
     if (loginInfo.secondPhaseRequired) {
-      if (isInBackground) {
-        throw new Error('Second phase required, cannot proceed in background mode.')
-      }
       cookies = await fetchCertifyLoginBySmsV2(await askOtpCodeV2('Enter the code from SMS'), loginInfo.transactionId)
     } else {
       deviceTrusted = true
@@ -169,10 +169,10 @@ WxdnLbK6zKx6+4WL9qWhGu6R+7HNPAaKOb7KXEwjV2ekr6FVZneKRFe/XivMk66O
   }
   const sessionId = await fetchGetSessionIdV2(cookies)
   if (!deviceTrusted) {
-    let orderId = await fetchTrustDeviceV2(deviceData, sessionId, cookies)
     if (isInBackground) {
       throw new Error('Second phase required, cannot proceed in background mode.')
     }
+    let orderId = await fetchTrustDeviceV2(deviceData, sessionId, cookies)
     let code = await askOtpCodeV2('Enter the second code from SMS for trusting the device')
     let trustId: string | null = null
 
@@ -181,9 +181,6 @@ WxdnLbK6zKx6+4WL9qWhGu6R+7HNPAaKOb7KXEwjV2ekr6FVZneKRFe/XivMk66O
       await ZenMoney.alert('Device was already trusted, but we don\'t have the trustedDeviceId. We need to untrust the device and trust it again')
       await fetchUnTrustDeviceV2(deviceData, sessionId, cookies)
       orderId = await fetchTrustDeviceV2(deviceData, sessionId, cookies)
-      if (isInBackground) {
-        throw new Error('Second phase required, cannot proceed in background mode.')
-      }
       code = await askOtpCodeV2('Enter the last code from SMS for trusting the device again')
       trustId = await fetchConfirmTrustedDeviceV2(code, orderId, cookies)
     }

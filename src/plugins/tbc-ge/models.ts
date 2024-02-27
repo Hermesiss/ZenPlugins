@@ -1,4 +1,4 @@
-import { Account, AccountOrCard, AccountType, Amount, Movement, Transaction } from '../../types/zenmoney'
+import { Account, AccountOrCard, AccountType, Amount, Merchant, Movement, Transaction } from '../../types/zenmoney'
 import { parsePOSDateString } from './converters'
 export interface Signature {
   response: null
@@ -142,6 +142,7 @@ export class TransactionBlockedV2 {
 
   constructor (transaction: TransactionRecordV2, date: number) {
     if (transaction.entryType !== 'BlockedTransaction') {
+      console.error(transaction)
       throw new Error('Invalid transaction entryType, expected BlockedTransaction')
     }
     this.transaction = transaction
@@ -160,6 +161,7 @@ export class TransactionBlockedV2 {
         transaction.blockedMovementIban!
       this.id = Buffer.from(idLine).toString('base64')
     } catch ({ message }) {
+      console.error(transaction)
       throw new Error(`Error parsing title "${transaction.title}" in TransactionBlockedV2: ${message}`)
     }
   }
@@ -175,6 +177,7 @@ export class TransactionTransferV2 {
 
   constructor (transaction: TransactionRecordV2) {
     if (!TransactionTransferV2.isTransfer(transaction)) {
+      console.error(transaction)
       throw new Error('Invalid transaction categoryCode')
     }
     this.transaction = transaction
@@ -184,6 +187,32 @@ export class TransactionTransferV2 {
   static isTransfer (transaction: TransactionRecordV2): boolean {
     return transaction.entryType === 'StandardMovement' &&
       (transaction.categoryCode === 'INCOME' || transaction.categoryCode === 'PAYMENTS' || transaction.categoryCode === 'BANK_INSURE_TAX')
+  }
+}
+
+export class TransactionTaxV2 {
+  transaction: TransactionRecordV2
+  static isTax (transaction: TransactionRecordV2): boolean {
+    return transaction.subCategoryCode === 'TAXES'
+  }
+
+  merchant: Merchant
+
+  constructor (transaction: TransactionRecordV2) {
+    if (transaction.subCategoryCode !== 'TAXES') {
+      console.error(transaction)
+      throw new Error('Transaction is not tax, the subCategoryCode is ' + transaction.subCategoryCode)
+    }
+    this.transaction = transaction
+
+    this.merchant = {
+      country: 'Georgia',
+      city: null,
+      title: 'Government of Georgia',
+      mcc: 9311, // Tax Payments and other similar services
+      location: null,
+      category: 'Taxes'
+    }
   }
 }
 
@@ -199,6 +228,7 @@ export class TransactionCustomMobileV2 {
 
   constructor (transaction: TransactionRecordV2) {
     if (transaction.subTitle !== 'Mobile') {
+      console.error(transaction)
       throw new Error('Transaction is not mobile, the subtitle is ' + transaction.subTitle)
     }
 
@@ -210,6 +240,7 @@ export class TransactionCustomMobileV2 {
       this.merchantCountry = 'Georgia'
       this.amount = -Number.parseFloat(arr[2].split(':')[1])
     } catch ({ message }) {
+      console.error(transaction)
       throw new Error(`Error parsing title "${transaction.title}" in TransactionCustomMobileV2: ${message}`)
     }
   }
@@ -240,9 +271,11 @@ export class TransactionStandardMovementV2 {
 
   constructor (transaction: TransactionRecordV2) {
     if (transaction.entryType !== 'StandardMovement') {
+      console.error(transaction)
       throw new Error('Invalid transaction entryType, expected StandardMovement')
     }
     if (TransactionTransferV2.isTransfer(transaction)) {
+      console.error(transaction)
       throw new Error('Invalid transaction categoryCode')
     }
     try {
@@ -286,6 +319,7 @@ export class TransactionStandardMovementV2 {
       this.cardNum = arr[arr.length - 1].trim().slice(-4)
       this.mcc = Number.parseInt(arr[arr.length - 3].replace('MCC:', '').trim())
     } catch ({ message }) {
+      console.error(transaction)
       throw new Error(`Error parsing title "${transaction.title}" in TransactionStandardMovementV2: ${message}`)
     }
   }

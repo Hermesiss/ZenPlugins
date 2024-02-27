@@ -7,7 +7,7 @@ import { TransactionRecordV2Class } from '../../../common-tests/classes'
 describe('convert cash transfer transactions', () => {
   const gelWithdrawal: [TransactionsByDateV2, ExtendedTransaction, Account] = [
     {
-      date: 1708545600000,
+      date: new Date('2024-02-22T16:05:00.000+04:00').getTime(),
       transactions:
         [
           TransactionRecordV2Class.cashOut(
@@ -17,7 +17,7 @@ describe('convert cash transfer transactions', () => {
     },
     {
       comment: null,
-      date: new Date('2024-02-22T12:05:00.000Z'),
+      date: new Date('2024-02-22T16:05:00.000+04:00'),
       hold: false,
       merchant: null,
       movements: [
@@ -48,7 +48,7 @@ describe('convert cash transfer transactions', () => {
   ]
   const usdWithdrawal: [TransactionsByDateV2, ExtendedTransaction, Account] = [
     {
-      date: 1706745600000,
+      date: new Date('2024-02-01T12:05:00.000+04:00').getTime(),
       transactions: [
         TransactionRecordV2Class.cashOut(
           'ATM CASH - ATM TBC-913(Abuseridze 5),   ტრანზაქციის თანხა 300.00 USD, Feb  1 2024 12:05PM, , ბარათი VISA, 444422******2222',
@@ -58,7 +58,7 @@ describe('convert cash transfer transactions', () => {
     },
     {
       comment: null,
-      date: new Date('2024-02-01T08:05:00.000Z'),
+      date: new Date('2024-02-01T12:05:00.000+04:00'),
       hold: false,
       merchant: null,
       movements: [

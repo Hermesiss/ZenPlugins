@@ -7,7 +7,7 @@ import { TransactionRecordV2Class } from '../../../common-tests/classes'
 describe('mobile', () => {
   const cellfie: [TransactionsByDateV2, ExtendedTransaction, Account] = [
     {
-      date: 1708545600000,
+      date: new Date('2024-02-22T00:00:00.000+04:00').getTime(),
       transactions:
           [
             TransactionRecordV2Class.mobile('Cellfie;599000111;თანხა:10.00',
@@ -16,7 +16,7 @@ describe('mobile', () => {
     },
     {
       comment: null,
-      date: new Date('2024-02-21T20:00:00.000Z'),
+      date: new Date('2024-02-22T00:00:00.000+04:00'),
       hold: false,
       merchant: {
         city: null,

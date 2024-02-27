@@ -8,7 +8,7 @@ import {
   PreparedCardV2,
   TransactionBlockedV2, TransactionCustomMobileV2,
   TransactionsByDateV2,
-  TransactionStandardMovementV2,
+  TransactionStandardMovementV2, TransactionTaxV2,
   TransactionTransferV2
 } from './models'
 import { padStart } from 'lodash'
@@ -106,6 +106,12 @@ export function convertTransactionsV2 (transactionRecordsByDate: TransactionsByD
             mcc: null,
             location: null
           }
+        } else if (TransactionTaxV2.isTax(transactionRecord)) {
+          const tax = new TransactionTaxV2(transactionRecord)
+          id = tax.transaction.movementId!
+          amount = tax.transaction.amount
+          comment = tax.transaction.title
+          merchant = tax.merchant
         } else {
           const movement = new TransactionStandardMovementV2(transactionRecord)
           dateNum = movement.date.getTime()
