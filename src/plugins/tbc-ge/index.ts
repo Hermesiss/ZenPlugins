@@ -3,10 +3,15 @@ import { fetchAccountsV2, fetchCardsV2, fetchDepositsV2, fetchLoansV2, fetchTran
 import { convertAccountsV2, convertCardsV2, convertTransactionsV2 } from './converters'
 import { AuthV2, FetchHistoryV2Data, Preferences } from './models'
 import { adjustTransactions } from '../../common/transactionGroupHandler'
+import { validateAuth } from './utils'
 
-export const scrape: ScrapeFunc<Preferences> = async ({ preferences, fromDate, toDate }) => {
+export const scrape: ScrapeFunc<Preferences> = async ({ preferences, fromDate, toDate, isInBackground }) => {
   ZenMoney.locale = 'en'
-  const session = await loginV2(preferences, ZenMoney.getData('auth') as AuthV2 | undefined)
+  let auth = ZenMoney.getData('auth') as AuthV2 | undefined
+  if (auth && !validateAuth(auth)) {
+    auth = undefined
+  }
+  const session = await loginV2(preferences, isInBackground, auth)
   ZenMoney.setData('auth', session.auth)
   ZenMoney.saveData()
 
