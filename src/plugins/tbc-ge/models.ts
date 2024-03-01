@@ -128,6 +128,12 @@ export interface TransactionV2 {
   showBlockedTransactions: boolean
 }
 
+export enum OtpDeviceV2 {
+  SMS = 'SMS_OTP',
+  GEMALTO = 'TOKEN_GEMALTO',
+  VASCO = 'TOKEN_VASCO'
+}
+
 export class TransactionBlockedV2 {
   transaction: TransactionRecordV2
   amount: number

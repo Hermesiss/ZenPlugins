@@ -1,13 +1,17 @@
 import {
   APP_VERSION,
   AuthV2,
+  CardProductV2,
+  CardsAndAccounts,
   DeviceData,
   DeviceInfo,
+  FetchHistoryV2Data,
   LoginResponse,
+  OtpDeviceV2,
   PASSCODE,
   Preferences,
-  CardProductV2,
-  SessionV2, CardsAndAccounts, TransactionsByDateV2, FetchHistoryV2Data
+  SessionV2,
+  TransactionsByDateV2
 } from './models'
 import {
   fetchApiDepositsV2,
@@ -21,7 +25,8 @@ import {
   fetchLoginByPasscodeV2,
   fetchLoginByPasswordV2,
   fetchRegisterDeviceV2,
-  fetchTrustDeviceV2, fetchUnTrustDeviceV2
+  fetchTrustDeviceV2,
+  fetchUnTrustDeviceV2
 } from './fetchApi'
 import { InvalidOtpCodeError } from '../../errors'
 
@@ -34,6 +39,43 @@ async function askOtpCodeV2 (prompt: string): Promise<string> {
   return sms.trim()
 }
 
+function getOtpDeviceName (device: OtpDeviceV2): string {
+  switch (device) {
+    case OtpDeviceV2.SMS:
+      return 'SMS'
+    case OtpDeviceV2.GEMALTO:
+      return 'TBC Pass App'
+    case OtpDeviceV2.VASCO:
+      return 'VASCO token'
+    default:
+      throw new Error(`Unknown device ${device}`)
+  }
+}
+
+/**
+ * Get the text for the first OTP code, for login
+ * @param device
+ */
+function getOtpLoginCodeTextV2 (device: OtpDeviceV2): string {
+  return `Enter the code from ${getOtpDeviceName(device)}`
+}
+
+/**
+ * Get the text for the second OTP code, for trusting the device
+ * @param device
+ */
+function getOtpTrustCodeTextV2 (device: OtpDeviceV2): string {
+  return `Enter the second code from ${getOtpDeviceName(device)} to trust the device`
+}
+
+/**
+ * Get the text for the last OTP code, for trusting the device again
+ * @param device
+ */
+function getOtpTrustAgainCodeTextV2 (device: OtpDeviceV2): string {
+  return `Enter the last code from ${getOtpDeviceName(device)} to trust the device again`
+}
+
 function generateDeviceInfo (): DeviceInfo {
   // replace all . with empty string
   const deviceId = ZenMoney.device.id.replace(/\./g, '_')
@@ -42,6 +84,25 @@ function generateDeviceInfo (): DeviceInfo {
 
 function generateDeviceData (deviceInfo: DeviceInfo): DeviceData {
   return DeviceData.fromDeviceInfo(deviceInfo, ZenMoney.device.os.name, ZenMoney.device.os.version)
+}
+
+/**
+ * Get the first possible challenge regen type or signature type. If there is none, return SMS
+ * @param loginInfo
+ * @param throwError If true, throw an error if no possible challenge regen types are found
+ */
+function getOtpDevice (loginInfo: LoginResponse, throwError = false): OtpDeviceV2 {
+  if (loginInfo.possibleChallengeRegenTypes != null && loginInfo.possibleChallengeRegenTypes.length !== 0) {
+    return loginInfo.possibleChallengeRegenTypes[0] as OtpDeviceV2
+  } else if (loginInfo.signatures != null && loginInfo.signatures.length !== 0) {
+    return loginInfo.signatures[0].type as OtpDeviceV2
+  } else {
+    if (throwError) {
+      console.error(loginInfo)
+      throw new Error('No possible challenge regen types found in signatures and possibleChallengeRegenTypes')
+    }
+    return OtpDeviceV2.SMS
+  }
 }
 
 export async function loginV2 ({ login, password }: Preferences, isInBackground: boolean, auth?: AuthV2): Promise<SessionV2> {
@@ -129,6 +190,7 @@ WxdnLbK6zKx6+4WL9qWhGu6R+7HNPAaKOb7KXEwjV2ekr6FVZneKRFe/XivMk66O
   let cookies
   let deviceTrusted = false
   let loginInfo: LoginResponse
+  let otpDevice: OtpDeviceV2 | null = null
   const deviceInfo = generateDeviceInfo()
   const deviceData = generateDeviceData(deviceInfo)
   if (auth == null) {
@@ -137,8 +199,10 @@ WxdnLbK6zKx6+4WL9qWhGu6R+7HNPAaKOb7KXEwjV2ekr6FVZneKRFe/XivMk66O
     }
     loginInfo = await fetchLoginByPasswordV2({ username: login, password, deviceInfo, deviceData })
     if (loginInfo.secondPhaseRequired) {
-      cookies = await fetchCertifyLoginBySmsV2(await askOtpCodeV2('Enter the code from SMS'), loginInfo.transactionId)
+      otpDevice = getOtpDevice(loginInfo, true)
+      cookies = await fetchCertifyLoginBySmsV2(await askOtpCodeV2(getOtpLoginCodeTextV2(otpDevice)), loginInfo.transactionId)
     } else {
+      otpDevice = getOtpDevice(loginInfo)
       deviceTrusted = true
       cookies = loginInfo.cookies
     }
@@ -154,11 +218,13 @@ WxdnLbK6zKx6+4WL9qWhGu6R+7HNPAaKOb7KXEwjV2ekr6FVZneKRFe/XivMk66O
   } else {
     loginInfo = await fetchLoginByPasscodeV2(auth, deviceInfo, deviceData)
     if (loginInfo.secondPhaseRequired) {
+      otpDevice = getOtpDevice(loginInfo, true)
       if (isInBackground) {
         throw new Error('Second phase required, cannot proceed in background mode.')
       }
-      cookies = await fetchCertifyLoginBySmsV2(await askOtpCodeV2('Enter the code from SMS'), loginInfo.transactionId)
+      cookies = await fetchCertifyLoginBySmsV2(await askOtpCodeV2(getOtpLoginCodeTextV2(otpDevice)), loginInfo.transactionId)
     } else {
+      otpDevice = getOtpDevice(loginInfo)
       deviceTrusted = true
       cookies = loginInfo.cookies
     }
@@ -173,7 +239,7 @@ WxdnLbK6zKx6+4WL9qWhGu6R+7HNPAaKOb7KXEwjV2ekr6FVZneKRFe/XivMk66O
       throw new Error('Second phase required, cannot proceed in background mode.')
     }
     let orderId = await fetchTrustDeviceV2(deviceData, sessionId, cookies)
-    let code = await askOtpCodeV2('Enter the second code from SMS for trusting the device')
+    let code = await askOtpCodeV2(getOtpTrustCodeTextV2(otpDevice))
     let trustId: string | null = null
 
     trustId = await fetchConfirmTrustedDeviceV2(code, orderId, cookies)
@@ -181,7 +247,7 @@ WxdnLbK6zKx6+4WL9qWhGu6R+7HNPAaKOb7KXEwjV2ekr6FVZneKRFe/XivMk66O
       await ZenMoney.alert('Device was already trusted, but we don\'t have the trustedDeviceId. We need to untrust the device and trust it again')
       await fetchUnTrustDeviceV2(deviceData, sessionId, cookies)
       orderId = await fetchTrustDeviceV2(deviceData, sessionId, cookies)
-      code = await askOtpCodeV2('Enter the last code from SMS for trusting the device again')
+      code = await askOtpCodeV2(getOtpTrustAgainCodeTextV2(otpDevice))
       trustId = await fetchConfirmTrustedDeviceV2(code, orderId, cookies)
     }
 
