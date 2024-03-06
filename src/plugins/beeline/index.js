@@ -10,6 +10,4 @@ async function scrape (args) {
   return main.scrape({ ...args, apiUri })
 }
 
-export {
-  scrape
-}
+export { scrape }
